@@ -1,0 +1,96 @@
+from fastapi import FastAPI, Form, Request, Response
+from fastapi.responses import HTMLResponse
+import sqlite3
+import os
+import uuid
+from datetime import datetime
+
+app = FastAPI()
+DB_NAME = "wedding_requests.db"
+
+def get_db():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        song_name TEXT, 
+        artist_name TEXT, 
+        requester_name TEXT, 
+        guest_id TEXT, 
+        status TEXT DEFAULT 'pending',
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+@app.get("/")
+async def home(request: Request):
+    guest_id = request.cookies.get("guest_id")
+    if not guest_id:
+        guest_id = str(uuid.uuid4())
+    
+    content = """<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1"></head>
+    <body class="bg-pink-50 p-4"><div class="max-w-md mx-auto bg-white p-6 rounded-xl shadow-lg text-center">
+    <h1 class="text-3xl font-bold text-pink-600 mb-2">Chloe & Alex 💍</h1>
+    <p class="text-gray-600 mb-6">Request a song for our special day!</p>
+    <form action="/submit" method="POST" class="space-y-4">
+        <input type="text" name="song" placeholder="Song Name" class="w-full p-4 border rounded-lg text-lg" required>
+        <input type="text" name="artist" placeholder="Artist" class="w-full p-4 border rounded-lg text-lg">
+        <input type="text" name="name" placeholder="Your Name" class="w-full p-4 border rounded-lg text-lg" required>
+        <button type="submit" class="w-full bg-pink-600 text-white p-4 rounded-lg font-bold text-xl shadow-md">🎵 Send Request</button>
+    </form></div></body></html>"""
+    
+    response = HTMLResponse(content=content)
+    response.set_cookie(key="guest_id", value=guest_id, httponly=True)
+    return response
+
+@app.post("/submit")
+async def submit_request(request: Request, song: str = Form(...), artist: str = Form(...), name: str = Form(...)):
+    guest_id = request.cookies.get("guest_id")
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO requests (song_name, artist_name, requester_name, guest_id) VALUES (?,?,?,?)", (song, artist, name, guest_id))
+    conn.commit()
+    conn.close()
+    return HTMLResponse(content="""<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script></head>
+    <body class="bg-green-50 flex items-center justify-center min-h-screen"><div class="text-center p-6">
+    <h1 class="text-4xl mb-4">🎉</h1><h2 class="text-2xl font-bold text-green-700">Request Sent!</h2>
+    <p class="text-gray-600 mt-2">The DJ has your song. Time to hit the dance floor!</p>
+    <a href="/" class="block mt-6 text-pink-600 underline">Request another</a></div></body></html>""")
+
+@app.get("/dj")
+async def dj_dashboard():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM requests ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+
+    html_rows = ""
+    for r in rows:
+        html_rows += f"""<tr class="border-b">
+            <td class="p-3 font-bold">{r['song_name']} <span class="text-sm text-gray-500 font-normal">{r['artist_name']}</span></td>
+            <td class="p-3">{r['requester_name']}</td>
+            <td class="p-3 text-xs text-gray-400">{r['timestamp']}</td>
+        </tr>"""
+
+    content = f"""<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script>
+    <meta http-equiv="refresh" content="10"></head>
+    <body class="bg-gray-900 text-white p-4"><div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl font-bold mb-4 text-center">🎧 DJ Dashboard - Chloe & Alex</h1>
+    <table class="w-full bg-gray-800 rounded-lg overflow-hidden">{html_rows}</table>
+    </div></body></html>"""
+    return HTMLResponse(content=content)
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
