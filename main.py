@@ -25,6 +25,7 @@ def init_db():
         status TEXT DEFAULT 'pending',
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_requester ON requests(requester_name)")
     conn.commit()
     conn.close()
 
@@ -70,23 +71,49 @@ async def submit_request(request: Request, song: str = Form(...), artist: str = 
 async def dj_dashboard():
     conn = get_db()
     c = conn.cursor()
+    
+    # Get all requests
     c.execute("SELECT * FROM requests ORDER BY id DESC")
     rows = c.fetchall()
+    
+    # Get requester stats
+    c.execute("SELECT requester_name, COUNT(*) as count FROM requests GROUP BY requester_name ORDER BY count DESC")
+    stats = c.fetchall()
+    
     conn.close()
 
+    # Generate Request Table
     html_rows = ""
     for r in rows:
-        html_rows += f"""<tr class="border-b">
-            <td class="p-3 font-bold">{r['song_name']} <span class="text-sm text-gray-500 font-normal">{r['artist_name']}</span></td>
+        html_rows += f"""<tr class="border-b border-gray-700">
+            <td class="p-3 font-bold">{r['song_name']} <span class="text-sm text-gray-400 font-normal">{r['artist_name']}</span></td>
             <td class="p-3">{r['requester_name']}</td>
-            <td class="p-3 text-xs text-gray-400">{r['timestamp']}</td>
+            <td class="p-3 text-xs text-gray-500">{r['timestamp'][11:16]}</td>
         </tr>"""
+
+    # Generate Stats Table
+    stats_rows = ""
+    for s in stats:
+        color = "text-red-400 font-bold" if s['count'] > 3 else "text-green-400"
+        stats_rows += f"<tr><td class='p-2'>{s['requester_name']}</td><td class='p-2 text-right {color}'>{s['count']}</td></tr>"
 
     content = f"""<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script>
     <meta http-equiv="refresh" content="10"></head>
-    <body class="bg-gray-900 text-white p-4"><div class="max-w-2xl mx-auto">
+    <body class="bg-gray-900 text-white p-4"><div class="max-w-4xl mx-auto">
     <h1 class="text-2xl font-bold mb-4 text-center">🎧 DJ Dashboard - Chloe & Alex</h1>
-    <table class="w-full bg-gray-800 rounded-lg overflow-hidden">{html_rows}</table>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="md:col-span-2 bg-gray-800 rounded-lg overflow-hidden">
+            <h2 class="p-3 bg-gray-700 font-bold">Latest Requests</h2>
+            <table class="w-full">{html_rows}</table>
+        </div>
+        
+        <div class="bg-gray-800 rounded-lg overflow-hidden">
+            <h2 class="p-3 bg-gray-700 font-bold">Requester Stats</h2>
+            <table class="w-full text-sm">{stats_rows}</table>
+            <p class="p-2 text-xs text-gray-500">⚠️ Red = High volume</p>
+        </div>
+    </div>
     </div></body></html>"""
     return HTMLResponse(content=content)
 
