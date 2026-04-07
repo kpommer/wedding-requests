@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import sqlite3
 import os
 import uuid
 from datetime import datetime
+import base64
 
 app = FastAPI()
 # Use /tmp for Railway compatibility
@@ -115,6 +117,26 @@ async def dj_dashboard():
             <p class="p-2 text-xs text-gray-500">⚠️ Red = High volume</p>
         </div>
     </div>
+    </div></body></html>"""
+    return HTMLResponse(content=content)
+
+@app.get("/qr")
+async def qr_info():
+    # Read and encode the QR image as base64
+    qr_path = os.path.join(os.path.dirname(__file__), "wedding_qr.png")
+    qr_b64 = ""
+    if os.path.exists(qr_path):
+        with open(qr_path, "rb") as f:
+            qr_b64 = base64.b64encode(f.read()).decode("utf-8")
+    
+    img_tag = f'<img src="data:image/png;base64,{qr_b64}" alt="Song Request QR" class="w-64 h-64 mx-auto mb-6 border-4 border-pink-200 rounded-lg">' if qr_b64 else '<div class="w-64 h-64 mx-auto mb-6 border-4 border-pink-200 rounded-lg flex items-center justify-center text-gray-400">QR Loading...</div>'
+    
+    content = f"""<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script></head>
+    <body class="bg-pink-50 min-h-screen flex items-center justify-center flex-col text-center p-4">
+    <div class="bg-white p-6 rounded-2xl shadow-xl">
+        <h1 class="text-2xl font-bold text-pink-600 mb-4">Chloe & Alex 💍</h1>
+        {img_tag}
+        <p class="text-gray-700 mb-2 text-lg">Scan to request a song!</p>
     </div></body></html>"""
     return HTMLResponse(content=content)
 
