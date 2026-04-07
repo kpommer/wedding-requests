@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime
 
 app = FastAPI()
-DB_NAME = "wedding_requests.db"
+# Use /tmp for Railway compatibility
+DB_NAME = "/tmp/wedding_requests.db"
 
 def get_db():
     conn = sqlite3.connect(DB_NAME)
